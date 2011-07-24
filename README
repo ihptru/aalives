@@ -1,0 +1,5 @@
+Armagetron Advanced script
+Provides extra lives on server
+
+To start:
+./run.sh /path/to/ladderlog.txt
