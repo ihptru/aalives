@@ -22,19 +22,27 @@ import random
 import GeoIP
 import re
 
-conn = sqlite3.connect('df.sqlite')
-cur = conn.cursor()
+def db_init():
+    conn = sqlite3.connect('db.sqlite')
+    cur = conn.cursor()
 
-#sql = """CREATE TABLE "lives" (
-#         "uid" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL UNIQUE ,
-#         "name" VARCHAR NOT NULL ,
-#         "lives" INTEGER NOT NULL DEFAULT 3,
-#         "ip" VARCHAR NOT NULL,
-#         "real_name" VARCHAR NOT NULL
-#         )
-#"""
-#cur.execute(sql)
-#conn.commit()
+    sql = """CREATE TABLE "lives" (
+             "uid" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL UNIQUE ,
+             "name" VARCHAR NOT NULL ,
+             "lives" INTEGER NOT NULL DEFAULT 3,
+             "ip" VARCHAR NOT NULL,
+             "real_name" VARCHAR NOT NULL
+             )
+    """
+    cur.execute(sql)
+    conn.commit()
+    cur.close()
+
+if not os.path.exists('db.sqlite'):
+    db_init()
+
+conn = sqlite3.connect('db.sqlite')
+cur = conn.cursor()
 
 def to_file(data):
     filename = '/var/svr/df/cmds.txt'
@@ -134,12 +142,12 @@ while True:
             coords = random.choice(random_coords)
             data = "RESPAWN_PLAYER "+dead+" "+coords+"\n"
             to_file(data)
-            if lives == 3:
-                lives_msg = '2 lives left'
-            elif lives == 2:
+            if lives == 2:
                 lives_msg = '1 life left'
-            else:
+            elif lives == 1:
                 lives_msg = 'last life'
+            else:
+                lives_msg = str(int(lives - 1))+' lives left'
             data = "CONSOLE_MESSAGE 0xcccccc"+dead+" is respawned, "+lives_msg+"\n"
             to_file(data)
             sql = """UPDATE lives
