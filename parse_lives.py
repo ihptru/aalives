@@ -21,6 +21,7 @@ import sqlite3
 import random
 import GeoIP
 import re
+import os
 
 def db_init():
     conn = sqlite3.connect('db.sqlite')
@@ -31,7 +32,8 @@ def db_init():
              "name" VARCHAR NOT NULL ,
              "lives" INTEGER NOT NULL DEFAULT 3,
              "ip" VARCHAR NOT NULL,
-             "real_name" VARCHAR NOT NULL
+             "real_name" VARCHAR NOT NULL,
+             "max_lives" INTEGER NOT NULL DEFAULT 3
              )
     """
     cur.execute(sql)
@@ -43,6 +45,21 @@ if not os.path.exists('db.sqlite'):
 
 conn = sqlite3.connect('db.sqlite')
 cur = conn.cursor()
+
+global max_lives_amount
+max_lives_amount = 3
+
+sql = """SELECT max_lives FROM "lives"
+        ORDER BY max_lives LIMIT 1
+"""
+cur.execute(sql)
+conn.commit()
+row = []
+for row in cur:
+    pass
+if row != []:
+    max_lives_amount = row[0]
+
 
 def to_file(data):
     filename = '/var/svr/df/cmds.txt'
@@ -58,10 +75,10 @@ while True:
         ip = lst[2]
         realname = " ".join(lst[3:])
         sql = """INSERT INTO lives
-            (name,ip,real_name)
+            (name,ip,real_name,lives,max_lives)
             VALUES
             (
-            '"""+name.replace("'","''")+"','"+ip+"','"+realname.replace("'","''")+"""'
+            '"""+name.replace("'","''")+"','"+ip+"','"+realname.replace("'","''")+"""','"""+str(max_lives_amount)+"""','"""+str(max_lives_amount)+"""'
             )
         """
         cur.execute(sql)
@@ -89,44 +106,11 @@ while True:
         conn.commit()
     if lst[0] == 'NEW_ROUND':
         sql = """UPDATE lives
-            SET lives = 3
+            SET lives = """+str(max_lives_amount)+"""
         """
         cur.execute(sql)
         conn.commit()
     if lst[0] == 'DEATH_FRAG':
-        dead = lst[1]
-        sql = """SELECT lives FROM lives
-                WHERE name = '"""+dead.replace("'","''")+"'"+"""
-        """
-        cur.execute(sql)
-        conn.commit()
-        row = []
-        for row in cur:
-            pass
-        lives = row[0]
-        if lives > 0:
-            random_coords = ['10 10 50 50','10 170 50 -50','170 10 50 50','170 170 50 -50']
-            coords = random.choice(random_coords)
-            data = "RESPAWN_PLAYER "+dead+" "+coords+"\n"
-            to_file(data)
-            if lives == 3:
-                lives_msg = '2 lives left'
-            elif lives == 2:
-                lives_msg = '1 life left'
-            else:
-                lives_msg = 'last life'
-            data = "CONSOLE_MESSAGE 0xcccccc"+dead+" is respawned, "+lives_msg+"\n"
-            to_file(data)
-            sql = """UPDATE lives
-                    SET lives = """+str(int(lives)-1)+"""
-                    WHERE name = '"""+dead.replace("'","''")+"'"+"""
-            """
-            cur.execute(sql)
-            conn.commit()
-        else:
-            data = "CONSOLE_MESSAGE 0xcccccc"+dead+" is dead\n"
-            to_file(data)
-    if lst[0] == 'DEATH_SUICIDE':
         dead = lst[1]
         sql = """SELECT lives FROM lives
                 WHERE name = '"""+dead.replace("'","''")+"'"+"""
@@ -159,12 +143,116 @@ while True:
         else:
             data = "CONSOLE_MESSAGE 0xcccccc"+dead+" is dead\n"
             to_file(data)
+    if lst[0] == 'DEATH_SUICIDE':
+        dead = lst[1]
+        sql = """SELECT lives FROM lives
+                WHERE name = '"""+dead.replace("'","''")+"'"+"""
+        """
+        cur.execute(sql)
+        conn.commit()
+        row = []
+        for row in cur:
+            pass
+        if row == []:
+            lives = row[0]
+        else:
+            lives = 0
+        if lives > 0:
+            random_coords = ['10 10 50 50','10 170 50 -50','170 10 50 50','170 170 50 -50']
+            coords = random.choice(random_coords)
+            data = "RESPAWN_PLAYER "+dead+" "+coords+"\n"
+            to_file(data)
+            if lives == 2:
+                lives_msg = '1 life left'
+            elif lives == 1:
+                lives_msg = 'last life'
+            else:
+                lives_msg = str(int(lives - 1))+' lives left'
+            data = "CONSOLE_MESSAGE 0xcccccc"+dead+" is respawned, "+lives_msg+"\n"
+            to_file(data)
+            sql = """UPDATE lives
+                    SET lives = """+str(int(lives)-1)+"""
+                    WHERE name = '"""+dead.replace("'","''")+"'"+"""
+            """
+            cur.execute(sql)
+            conn.commit()
+        else:
+            data = "CONSOLE_MESSAGE 0xcccccc"+dead+" is dead\n"
+            to_file(data)
     if lst[0] == 'GAME_END':
         sql = """DELETE FROM lives
         """
         cur.execute(sql)
         conn.commit()
     if lst[0] == 'INVALID_COMMAND':
+        if lst[1] == '/max_lives':
+            if int(lst[4]) <= 2 :
+                name = lst[2]
+                if len(lst[5:]) == 1:
+                    max_lives = ''
+                    try:
+                        max_lives = int(lst[5])
+                    except:
+                        data = 'PLAYER_MESSAGE "'+name+'" "0xff0000Amount error"\n'
+                        to_file(data)
+                    if type(max_lives) == int:
+                        sql = """UPDATE lives
+                                SET max_lives = '"""+str(max_lives)+"""'
+                        """
+                        cur.execute(sql)
+                        conn.commit()
+                        data = 'PLAYER_MESSAGE "'+name+'" "Changes are applied!"\n'
+                        to_file(data)
+                elif len(lst[5:]) > 1:  #request amount of lives for player
+                    max_lives = ''
+                    try:
+                        max_lives = int(lst[5])
+                    except:
+                        data = 'PLAYER_MESSAGE "'+name+'" "0xff0000Amount error"\n'
+                        to_file(data)
+                    if type(max_lives) == int:
+                        to_whom = " ".join(lst[6:])
+                        sql = """SELECT max_lives,lives FROM lives
+                                WHERE upper(name) LIKE upper('%"""+to_whom.replace("'","''")+"""%')
+                        """
+                        cur.execute(sql)
+                        conn.commit()
+                        row = []
+                        for row in cur:
+                            pass
+                        if row != []:
+                            if ( len(row) == 1):
+                                current_max_lives = row[0]
+                                current_lives = row[1]
+                                add_lives = str(int(current_lives) + (int(max_lives) - int(current_max_lives)))
+                                if add_lives < current_lives:
+                                    data = 'PLAYER_MESSAGE "'+name+'" "You can set up less lives then player has!"\n'
+                                    to_file(data)
+                                else:
+                                    sql = """UPDATE lives
+                                            SET max_lives = '"""+str(max_lives)+"""'
+                                            WHERE upper(name) LIKE upper('%"""+to_whom.replace("'","''")+"""%')
+                                    """
+                                    cur.execute(sql)
+                                    conn.commit()
+                                    sql = """UPDATE lives
+                                            SET lives = '"""+add_lives+"""'
+                                            WHERE upper(name) LIKE upper('%"""+to_whom.replace("'","''")+"""%')
+                                    """
+                                    cur.execute(sql)
+                                    conn.commit()
+                                    data = 'PLAYER_MESSAGE "'+name+'" "Changes are applied!"\n'
+                                    to_file(data)
+                            else:
+                                data = 'PLAYER_MESSAGE "'+name+'" "Too many matches!"\n'
+                                to_file(data)
+                        else:
+                            data = 'PLAYER_MESSAGE "'+name+'" "No such a player online!"\n'
+                            to_file(data)
+                else:
+                    data = 'PLAYER_MESSAGE "'+name+'" "0xff0000Error!"\n'
+                    to_file(data)
+                
         if lst[1] == '/location':
             name = lst[2]
             ip = lst[3]
